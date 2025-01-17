@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { apiRequest } from "../api";
 import { useRouter } from "next/navigation";
 import { Send, Bot, PlusCircle, LogOut } from "lucide-react";
@@ -17,12 +17,18 @@ interface Session {
   name: string;
 }
 
+interface User {
+  id: string;
+  jwt: string;
+  username: string;
+}
+
 export default function Chat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [message, setMessage] = useState("");
   const [sessions, setSessions] = useState<Session[]>([]);
   const [currentSession, setCurrentSession] = useState<Session | null>(null);
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
@@ -36,7 +42,7 @@ export default function Chat() {
       }
 
       try {
-        const parsedUser = JSON.parse(storedUser);
+        const parsedUser: User = JSON.parse(storedUser);
         if (!parsedUser.jwt) throw new Error("Invalid user data");
 
         setUser(parsedUser);
@@ -51,14 +57,14 @@ export default function Chat() {
     initializeUser();
   }, [router]);
 
-  const fetchSessions = async (userData: any) => {
+  const fetchSessions = useCallback(async (userData: User) => {
     try {
       const response = await apiRequest(`/api/sessions?filters[user][id][$eq]=${userData.id}`, {
         headers: { Authorization: `Bearer ${userData.jwt}` },
       });
 
       if (response?.data?.length) {
-        const sessionsFromAPI = response.data.map((session: any) => ({
+        const sessionsFromAPI: Session[] = response.data.map((session: any) => ({
           id: session.id,
           name: session.name,
         }));
@@ -71,9 +77,9 @@ export default function Chat() {
       console.error("Error fetching sessions:", error);
       handleUnauthorized(error);
     }
-  };
+  }, []);
 
-  const createInitialSession = async (userData: any) => {
+  const createInitialSession = async (userData: User) => {
     try {
       const response = await apiRequest("/api/sessions", {
         method: "POST",
@@ -84,7 +90,7 @@ export default function Chat() {
         body: JSON.stringify({ data: { name: "Session 1", user: userData.id } }),
       });
 
-      const newSession = {
+      const newSession: Session = {
         id: response.data.id,
         name: response.data.name,
       };
@@ -96,7 +102,7 @@ export default function Chat() {
     }
   };
 
-  const loadSession = async (session: Session, userData: any = user) => {
+  const loadSession = async (session: Session, userData: User = user!) => {
     if (!userData) return;
 
     try {
@@ -105,7 +111,7 @@ export default function Chat() {
         { headers: { Authorization: `Bearer ${userData.jwt}` } }
       );
 
-      const messagesFromAPI = response.data.map((msg: any) => ({
+      const messagesFromAPI: Message[] = response.data.map((msg: any) => ({
         id: msg.id,
         message: msg.message,
         user: msg.user?.username || "Bot",
@@ -138,7 +144,7 @@ export default function Chat() {
         }),
       });
 
-      const newSession = {
+      const newSession: Session = {
         id: response.data.id,
         name: response.data.name,
       };
@@ -154,14 +160,14 @@ export default function Chat() {
   const sendMessage = async () => {
     if (!currentSession || !message.trim() || loading) return;
 
-    const userMessage = {
+    const userMessage: Message = {
       id: Date.now().toString(),
       message: message.trim(),
-      user: user.username,
+      user: user!.username,
       timestamp: new Date().toISOString(),
     };
 
-    const botMessage = {
+    const botMessage: Message = {
       id: (Date.now() + 1).toString(),
       message: message.trim(),
       user: "Bot",
@@ -176,12 +182,12 @@ export default function Chat() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${user.jwt}`,
+          Authorization: `Bearer ${user!.jwt}`,
         },
         body: JSON.stringify({
           data: {
             message: userMessage.message,
-            user: user.id,
+            user: user!.id,
             session: currentSession.id,
             timestamp: userMessage.timestamp,
           },
@@ -192,7 +198,7 @@ export default function Chat() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${user.jwt}`,
+          Authorization: `Bearer ${user!.jwt}`,
         },
         body: JSON.stringify({
           data: {
@@ -217,12 +223,20 @@ export default function Chat() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const handleUnauthorized = (error: any) => {
-    if (error?.response?.status === 401) {
+  const handleUnauthorized = (error: unknown) => {
+    if (isApiError(error) && error.response?.status === 401) {
       localStorage.removeItem("user");
       router.push("/login");
     }
   };
+  function isApiError(error: unknown): error is { response?: { status: number } } {
+    return (
+      typeof error === "object" &&
+      error !== null &&
+      "response" in error &&
+      typeof (error as any).response?.status === "number"
+    );
+  }
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-gray-800 via-gray-900 to-black p-4">
@@ -282,12 +296,12 @@ export default function Chat() {
               <div
                 key={idx}
                 className={`flex ${
-                  msg.user === user.username ? "justify-end" : "justify-start"
+                  msg.user === user!.username ? "justify-end" : "justify-start"
                 }`}
               >
                 <div
                   className={`max-w-[80%] group transition-all duration-200 ${
-                    msg.user === user.username
+                    msg.user === user!.username
                       ? "bg-indigo-600 text-white rounded-2xl rounded-tr-none"
                       : "bg-gray-800 text-gray-100 rounded-2xl rounded-tl-none border border-gray-700"
                   }`}
@@ -296,7 +310,7 @@ export default function Chat() {
                     <p className="text-sm leading-relaxed">{msg.message}</p>
                     <span
                       className={`text-xs mt-2 block opacity-70 group-hover:opacity-100 transition-opacity ${
-                        msg.user === user.username
+                        msg.user === user!.username
                           ? "text-indigo-200"
                           : "text-gray-400"
                       }`}
@@ -323,23 +337,18 @@ export default function Chat() {
               type="text"
               className="w-full px-6 py-4 bg-gray-800/50 border border-gray-700 rounded-xl pr-16 
                 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent 
-                placeholder:text-gray-500 text-gray-200 transition-all duration-200
-                hover:bg-gray-800/70"
+                text-gray-300"
               placeholder="Type your message..."
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-              disabled={loading}
             />
             <button
-              className="absolute right-2 top-1/2 -translate-y-1/2 p-3 bg-indigo-600 text-white rounded-lg
-                hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 
-                transition-all duration-200 disabled:opacity-50 disabled:hover:bg-indigo-600
-                hover:scale-105 active:scale-95"
+              className="absolute right-4 top-1/2 transform -translate-y-1/2 bg-indigo-600 p-2 rounded-full 
+                hover:bg-indigo-700 focus:outline-none"
               onClick={sendMessage}
-              disabled={!message.trim() || loading}
             >
-              <Send className="w-5 h-5" />
+              <Send className="w-5 h-5 text-white" />
             </button>
           </div>
         </div>
