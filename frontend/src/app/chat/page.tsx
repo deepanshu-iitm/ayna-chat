@@ -29,78 +29,9 @@ export default function Chat() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [currentSession, setCurrentSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
-
-  useEffect(() => {
-    const initializeUser = async () => {
-      const storedUser = localStorage.getItem("user");
-      if (!storedUser) {
-        router.push("/login");
-        return;
-      }
-
-      try {
-        const parsedUser: User = JSON.parse(storedUser);
-        if (!parsedUser.jwt) throw new Error("Invalid user data");
-
-        setUser(parsedUser);
-        await fetchSessions(parsedUser);
-      } catch (error) {
-        console.error("Error initializing user:", error);
-        localStorage.removeItem("user");
-        router.push("/login");
-      }
-    };
-
-    initializeUser();
-  }, [router]);
-
-  const fetchSessions = useCallback(async (userData: User) => {
-    try {
-      const response = await apiRequest(`/api/sessions?filters[user][id][$eq]=${userData.id}`, {
-        headers: { Authorization: `Bearer ${userData.jwt}` },
-      });
-
-      if (response?.data?.length) {
-        const sessionsFromAPI: Session[] = response.data.map((session: any) => ({
-          id: session.id,
-          name: session.name,
-        }));
-        setSessions(sessionsFromAPI);
-        loadSession(sessionsFromAPI[0], userData);
-      } else {
-        await createInitialSession(userData);
-      }
-    } catch (error) {
-      console.error("Error fetching sessions:", error);
-      handleUnauthorized(error);
-    }
-  }, []);
-
-  const createInitialSession = async (userData: User) => {
-    try {
-      const response = await apiRequest("/api/sessions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${userData.jwt}`,
-        },
-        body: JSON.stringify({ data: { name: "Session 1", user: userData.id } }),
-      });
-
-      const newSession: Session = {
-        id: response.data.id,
-        name: response.data.name,
-      };
-      setSessions([newSession]);
-      setCurrentSession(newSession);
-      setMessages([]);
-    } catch (error) {
-      console.error("Error creating initial session:", error);
-    }
-  };
 
   const loadSession = async (session: Session, userData: User = user!) => {
     if (!userData) return;
@@ -122,6 +53,93 @@ export default function Chat() {
       setCurrentSession(session);
     } catch (error) {
       console.error("Error loading session messages:", error);
+    }
+  };
+
+  const handleUnauthorized = (error: unknown) => {
+    if (isApiError(error) && error.response?.status === 401) {
+      localStorage.removeItem("user");
+      router.push("/login");
+    }
+  };
+
+  function isApiError(error: unknown): error is { response?: { status: number } } {
+    return (
+      typeof error === "object" &&
+      error !== null &&
+      "response" in error &&
+      typeof (error as any).response?.status === "number"
+    );
+  }
+
+  const fetchSessions = useCallback(async (userData: User) => {
+    try {
+      const response = await apiRequest(`/api/sessions?filters[user][id][$eq]=${userData.id}`, {
+        headers: { Authorization: `Bearer ${userData.jwt}` },
+      });
+
+      if (response?.data?.length) {
+        const sessionsFromAPI: Session[] = response.data.map((session: { id: string; name: string }) => ({
+          id: session.id,
+          name: session.name,
+        }));
+        setSessions(sessionsFromAPI);
+        loadSession(sessionsFromAPI[0], userData);
+      } else {
+        await createInitialSession(userData);
+      }
+    } catch (error) {
+      console.error("Error fetching sessions:", error);
+      handleUnauthorized(error);
+    }
+  }, [handleUnauthorized, loadSession]);
+
+  useEffect(() => {
+    const initializeUser = async () => {
+      const storedUser = localStorage.getItem("user");
+      if (!storedUser) {
+        router.push("/login");
+        return;
+      }
+
+      try {
+        const parsedUser: User = JSON.parse(storedUser);
+        if (!parsedUser.jwt) throw new Error("Invalid user data");
+
+        if (!user) {
+        setUser(parsedUser);
+      }
+        await fetchSessions(parsedUser);
+      } catch (error) {
+        console.error("Error initializing user:", error);
+        localStorage.removeItem("user");
+        router.push("/login");
+      }
+    };
+
+    initializeUser();
+  }, [router, user]);
+
+  const createInitialSession = async (userData: User) => {
+    try {
+      const response = await apiRequest("/api/sessions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${userData.jwt}`,
+        },
+        body: JSON.stringify({ data: { name: "Session 1", user: userData.id } }),
+      });
+
+      const newSession: Session = {
+        id: response.data.id,
+        name: response.data.name,
+      };
+      setSessions([newSession]);
+      setCurrentSession(newSession);
+      setMessages([]);
+    } catch (error) {
+      console.error("Error creating initial session:", error);
     }
   };
 
@@ -223,20 +241,7 @@ export default function Chat() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const handleUnauthorized = (error: unknown) => {
-    if (isApiError(error) && error.response?.status === 401) {
-      localStorage.removeItem("user");
-      router.push("/login");
-    }
-  };
-  function isApiError(error: unknown): error is { response?: { status: number } } {
-    return (
-      typeof error === "object" &&
-      error !== null &&
-      "response" in error &&
-      typeof (error as any).response?.status === "number"
-    );
-  }
+ 
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-gray-800 via-gray-900 to-black p-4">
