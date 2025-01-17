@@ -3,7 +3,7 @@ export const apiRequest = async (
     options: RequestInit = {}
   ) => {
     try {
-      const baseUrl = "http://localhost:1337"; 
+      const baseUrl = "https://ayna-chat-1.onrender.com/"; 
       const response = await fetch(`${baseUrl}${endpoint}`, options);
       if (!response.ok) {
         throw new Error(`Error: ${response.status}`);
