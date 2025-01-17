@@ -42,7 +42,7 @@ export default function Chat() {
         { headers: { Authorization: `Bearer ${userData.jwt}` } }
       );
 
-      const messagesFromAPI: Message[] = response.data.map((msg: any) => ({
+      const messagesFromAPI: Message[] = response.data.map((msg: { id: string; message: string; user: { username: string }; timestamp: string }) => ({
         id: msg.id,
         message: msg.message,
         user: msg.user?.username || "Bot",
@@ -68,7 +68,7 @@ export default function Chat() {
       typeof error === "object" &&
       error !== null &&
       "response" in error &&
-      typeof (error as any).response?.status === "number"
+      typeof (error as { response?: { status: number } }).response?.status === "number"
     );
   }
 
